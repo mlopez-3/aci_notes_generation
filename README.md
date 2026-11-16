@@ -30,4 +30,10 @@ python scripts/import_data.py --src <ruta>/aci-bench/data/challenge_data_json   
 python -m unittest discover tests
 ```
 
+Generar notes (necessita GPU): el model es tria amb `--model` i les prediccions queden a `predictions/` amb el nom del model.
+```bash
+python scripts/generate.py --n 2                                              # Qwen3-4B-Instruct-2507 (sense reasoning)
+python scripts/generate.py --model thinking --split valid                     # Qwen3-4B-Thinking-2507 (amb reasoning)
+```
+
 Para la GPU: `pip install -e ".[ml,eval]"`.

@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "acinotes"
+version = "0.1.0"
+description = "Generación de notas clínicas a partir de conversaciones médico-paciente (ACI-Bench) y evaluación de su fidelidad."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+# Sin versiones fijadas todavía: cuando todo funcione en la VM de Google Cloud se congelarán
+# con `pip freeze > requirements-lock.txt`.
+[project.optional-dependencies]
+ml = ["torch", "transformers", "accelerate", "bitsandbytes", "peft"]
+eval = ["numpy", "rouge-score", "bert-score"]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -43,6 +43,10 @@ DEFAULT_KEEP = ("sign_symptom,disease_disorder,medication,diagnostic_procedure,"
                 "therapeutic_procedure,lab_value,dosage")
 NEEDS_SOURCE = True  # necessita la transcripció (ctx["src"][file])
 
+
+def metric_name(opts):
+    return "entities-v4"
+
 ALL_GROUPS = GROUP_NAMES + ["OTHER"]
 HEADER_RE = re.compile(r"^[A-Z][A-Z &/,\-:]{2,60}$")
 TAG_RE = re.compile(r"^\[[^\]]+\]\s*")      # [doctor] / [patient]

@@ -7,11 +7,25 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from acinotes import naming  # noqa: E402
 from acinotes.evaluate import resolve_predictions, run_evaluation  # noqa: E402
+from acinotes import metrics as metrics_pkg  # noqa: E402
 from acinotes.metrics import bleurt, entities  # noqa: E402
 from acinotes.sections import split_groups  # noqa: E402
 
 NOTE = "CHIEF COMPLAINT\n\nCough.\n\nPHYSICAL EXAM\n\nLungs clear.\n\nASSESSMENT AND PLAN\n\nRest."
 STEM = "valid__zeroshot__qwen3-4b-instruct-2507__nothink-4bit-bf16__20261119T1530Z"
+
+
+class InterfaceTest(unittest.TestCase):
+    def test_every_metric_has_full_interface(self):
+        for metric_id in metrics_pkg.METRIC_MODULES:
+            mod = metrics_pkg.load(metric_id)
+            for attr in ("metric_name", "run", "headline"):
+                self.assertTrue(callable(getattr(mod, attr, None)), f"{metric_id} no té {attr}")
+            self.assertRegex(mod.metric_name({}), r"^[a-z0-9.\-]+-v\d+$")
+
+    def test_names_do_not_contain_double_underscore(self):
+        for metric_id in metrics_pkg.METRIC_MODULES:
+            self.assertNotIn("__", metrics_pkg.load(metric_id).metric_name({}))
 
 
 class SectionsTest(unittest.TestCase):

@@ -48,11 +48,12 @@ def thinking_modes(model_name: str, requested: str | None = None) -> list[bool]:
     else:
         allowed = [False, True]
     wanted = {None: allowed, "both": [False, True], "off": [False], "on": [True]}[requested]
-    if requested is not None and wanted != allowed and not set(wanted) <= set(allowed):
+    if requested is not None and not set(wanted) <= set(allowed):
+        other = "Qwen/Qwen3-4B-Thinking-2507" if allowed == [False] else "Qwen/Qwen3-4B-Instruct-2507"
         raise ValueError(
             f"{model_name} no admet thinking={'on' if True in wanted and True not in allowed else 'off'}. "
             f"Modes possibles: {['off' if not m else 'on' for m in allowed]}. "
-            "Per al mode contrari fes servir l'altre model (p. ex. Qwen/Qwen3-4B-Thinking-2507).")
+            f"Per al mode contrari fes servir l'altre model (p. ex. {other}).")
     return [m for m in wanted if m in allowed] if requested == "both" else wanted
 
 
@@ -74,13 +75,21 @@ def sampling_kwargs(thinking: bool, temperature=None, top_p=None, top_k=None) ->
     }
 
 
+def adapter_variant(adapter: naming.AdapterRef, base_variant: str) -> str:
+    """Variant del nom d'una predicció LoRA: hiperparàmetres-stamp-versió-mode-quantització-dtype."""
+    return naming.slug(f"{adapter.aid.variant}-{adapter.aid.stamp}-{adapter.which}-{base_variant}")
+
+
 def model_short_name(model_name: str) -> str:
     """'Qwen/Qwen3-32B' -> 'qwen3-32b' (el que va al nom del fitxer)."""
     return naming.slug(model_name.rstrip("/").split("/")[-1])
 
 
-def load_model(model_name: str, quant: str = "4bit", dtype_choice: str = "auto"):
-    """Carrega tokenizer i model. quant: none | 8bit | 4bit. Retorna (tok, model, nom_dtype)."""
+def load_model(model_name: str, quant: str = "4bit", dtype_choice: str = "auto", adapter_path=None):
+    """Carrega tokenizer i model. quant: none | 8bit | 4bit. Retorna (tok, model, nom_dtype).
+
+    adapter_path: carpeta d'un adaptador LoRA (adapters/<id>/best); s'aplica sobre el model base.
+    """
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
@@ -106,6 +115,10 @@ def load_model(model_name: str, quant: str = "4bit", dtype_choice: str = "auto")
 
     tok = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(model_name, **kw)
+    if adapter_path is not None:
+        from peft import PeftModel
+        print(f"Aplicant l'adaptador LoRA {adapter_path}")
+        model = PeftModel.from_pretrained(model, str(adapter_path))
     model.eval()
     return tok, model, dtype_name
 
@@ -115,8 +128,13 @@ def generate_predictions(tok, model, *, model_name: str, split: str, thinking: b
                          n: int | None = None, max_new_tokens: int = 1300,
                          temperature=None, top_p=None, top_k=None, seed: int = 0,
                          stamp: str | None = None, resume: bool = False,
+                         adapter: naming.AdapterRef | None = None,
                          predictions_dir="predictions", repo_dir=".") -> Path:
-    """Genera les notes d'un split i les desa a predictions/ amb el nom que marca naming.py."""
+    """Genera les notes d'un split i les desa a predictions/ amb el nom que marca naming.py.
+
+    adapter: si es passa, la predicció es diu "lora" i la variant identifica l'adaptador (hiperparàmetres,
+    stamp i versió: best/last/epoch_N), perquè mai es confonguin dues proves.
+    """
     import torch
 
     if system not in PROMPT_BUILDERS:
@@ -125,7 +143,13 @@ def generate_predictions(tok, model, *, model_name: str, split: str, thinking: b
     sampling = sampling_kwargs(thinking, temperature, top_p, top_k)
 
     variant = f"{'think' if thinking else 'nothink'}-{quant}-{dtype_name}"
-    pid = naming.PredictionId.new(split, system, model_short_name(model_name), variant, stamp)
+    system_name = system
+    if adapter is not None:
+        if adapter.aid.model != model_short_name(model_name):
+            raise ValueError(f"L'adaptador és de {adapter.aid.model} i el model base és {model_short_name(model_name)}")
+        system_name = "lora"
+        variant = adapter_variant(adapter, variant)
+    pid = naming.PredictionId.new(split, system_name, model_short_name(model_name), variant, stamp)
     out_path = naming.prediction_path(pid, predictions_dir)
     meta = naming.meta_path(pid, predictions_dir)
 
@@ -138,7 +162,8 @@ def generate_predictions(tok, model, *, model_name: str, split: str, thinking: b
     if not meta.exists():
         import transformers
         write_meta(meta, {
-            "model": model_name, "system": system, "split": split, "thinking": thinking,
+            "model": model_name, "system": system_name, "prompt": system, "split": split, "thinking": thinking,
+            "adapter": None if adapter is None else {"id": adapter.aid.stem, "version": adapter.which},
             "quantization": quant, "dtype": dtype_name, "max_new_tokens": max_new_tokens,
             "sampling": sampling, "seed": seed, "n": n,
             "torch": torch.__version__, "transformers": transformers.__version__,

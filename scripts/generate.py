@@ -5,7 +5,8 @@ Exemples:
   python scripts/generate.py --model instruct                                   # el mateix, amb àlies
   python scripts/generate.py --model thinking --split valid                     # Qwen3-4B-Thinking-2507 (amb reasoning)
   python scripts/generate.py --model Qwen/Qwen3-32B                             # híbrid: genera sense i amb reasoning
-  python scripts/generate.py --stamp 20261117T0900Z --resume        # reprèn una execució tallada
+  python scripts/generate.py --adapter <id-adaptador> --split valid             # amb l'adaptador LoRA (millor època)
+  python scripts/generate.py --stamp 20261117T0900Z --resume                    # reprèn una execució tallada
 """
 import argparse
 import sys
@@ -15,14 +16,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from acinotes.data import SPLIT_FILES  # noqa: E402
 from acinotes.generate import generate_predictions, load_model, thinking_modes  # noqa: E402
-from acinotes.naming import utc_stamp  # noqa: E402
+from acinotes.models import resolve_model  # noqa: E402
+from acinotes.naming import resolve_adapter, utc_stamp  # noqa: E402
 from acinotes.prompts import PROMPT_BUILDERS  # noqa: E402
 
-# Àlies curts per a --model (qualsevol altre id de Hugging Face també val tal qual)
-MODEL_ALIASES = {
-    "instruct": "Qwen/Qwen3-4B-Instruct-2507",  # sense reasoning
-    "thinking": "Qwen/Qwen3-4B-Thinking-2507",  # amb reasoning
-}
 DEFAULT_MODEL = "Qwen/Qwen3-4B-Instruct-2507"  # només sense reasoning; el reasoning és Qwen/Qwen3-4B-Thinking-2507
 
 
@@ -43,11 +40,15 @@ def main():
     ap.add_argument("--top-p", type=float, default=None)
     ap.add_argument("--top-k", type=int, default=None)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--adapter", default=None,
+                    help="adaptador LoRA: id (adapters/<id>, usa 'best'), <id>/epoch_2 o ruta. La predicció es diu 'lora'")
+    ap.add_argument("--adapters-dir", default=str(ROOT / "adapters"))
     ap.add_argument("--stamp", default=None, help="força el stamp del nom (necessari per --resume)")
     ap.add_argument("--resume", action="store_true", help="continua una predicció existent amb el mateix --stamp")
     ap.add_argument("--predictions-dir", default=str(ROOT / "predictions"))
     a = ap.parse_args()
-    a.model = MODEL_ALIASES.get(a.model, a.model)
+    a.model = resolve_model(a.model)
+    adapter = resolve_adapter(a.adapter, a.adapters_dir) if a.adapter else None
     if a.resume and not a.stamp:
         ap.error("--resume necessita --stamp")
 
@@ -57,14 +58,15 @@ def main():
     except ValueError as e:
         ap.error(str(e))
 
-    tok, model, dtype_name = load_model(a.model, a.quant, a.dtype)  # es carrega una sola vegada
+    tok, model, dtype_name = load_model(a.model, a.quant, a.dtype, adapter.weights if adapter else None)  # es carrega una sola vegada
     for thinking in modes:
         generate_predictions(
             tok, model, model_name=a.model, split=a.split, thinking=thinking, quant=a.quant,
             dtype_name=dtype_name, system=a.system, n=a.n,
             max_new_tokens=a.max_new_tokens or (8192 if thinking else 1300),
             temperature=a.temperature, top_p=a.top_p, top_k=a.top_k, seed=a.seed,
-            stamp=stamp, resume=a.resume, predictions_dir=a.predictions_dir, repo_dir=ROOT)
+            stamp=stamp, resume=a.resume, adapter=adapter,
+            predictions_dir=a.predictions_dir, repo_dir=ROOT)
 
 
 if __name__ == "__main__":

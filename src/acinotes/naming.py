@@ -112,3 +112,68 @@ def ensure_new(path: Path, overwrite: bool = False) -> Path:
         raise FileExistsError(f"{path} ya existe; usa overwrite=True si quieres reemplazarlo")
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
+
+
+# ---------- Adaptadors LoRA ----------
+# adapters/<adapter-id>/{best,last,epoch_N}/adapter_model.safetensors
+# <adapter-id> = lora__<model>__<variant>__<stamp>   (variant: hiperparàmetres, p. ex. r16-attn-ep3-lr0.0002-bf16)
+@dataclass(frozen=True)
+class AdapterId:
+    model: str
+    variant: str
+    stamp: str
+
+    def __post_init__(self):
+        for name in ("model", "variant"):
+            v = getattr(self, name)
+            if v != slug(v):
+                raise ValueError(f"{name}={v!r} no és vàlid; usa slug(): {slug(v)!r}")
+        if not _STAMP_RE.match(self.stamp):
+            raise ValueError(f"stamp {self.stamp!r} no té el format 20261116T1702Z")
+
+    @classmethod
+    def new(cls, model, variant, stamp=None):
+        return cls(slug(model), slug(variant), stamp or utc_stamp())
+
+    @property
+    def stem(self) -> str:
+        return SEP.join(["lora", self.model, self.variant, self.stamp])
+
+
+@dataclass(frozen=True)
+class AdapterRef:
+    """Un adaptador concret al disc: arrel (adapters/<id>), carpeta amb els pesos i quina versió és."""
+    root: Path
+    weights: Path
+    aid: AdapterId
+    which: str  # best | last | epoch_N
+
+
+def parse_adapter_stem(stem: str) -> AdapterId:
+    parts = stem.split(SEP)
+    if len(parts) != 4 or parts[0] != "lora":
+        raise ValueError(f"{stem!r} no té el format lora__<model>__<variant>__<stamp>")
+    return AdapterId(*parts[1:])
+
+
+def adapter_dir(aid: AdapterId, adapters_dir="adapters") -> Path:
+    return Path(adapters_dir) / aid.stem
+
+
+def resolve_adapter(spec: str, adapters_dir="adapters") -> AdapterRef:
+    """Converteix el que escriu l'usuari en un adaptador del disc.
+
+    spec: "<id>" (agafa best), "<id>/best", "<id>/epoch_2", o una ruta (adapters/<id>[/best]).
+    """
+    cands = [Path(spec), Path(adapters_dir) / spec]
+    path = next((c for c in cands if c.is_dir()), None)
+    if path is None:
+        raise FileNotFoundError(f"No trobo l'adaptador {spec!r} (ni a {adapters_dir}/)")
+    path = path.resolve() if path.is_absolute() else path
+    try:  # carpeta arrel: el nom és l'id
+        aid = parse_adapter_stem(path.name)
+        root, which = path, "best"
+    except ValueError:  # carpeta de pesos: el pare és l'arrel
+        aid = parse_adapter_stem(path.parent.name)
+        root, which = path.parent, path.name
+    return AdapterRef(root=root, weights=root / which, aid=aid, which=which)

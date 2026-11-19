@@ -36,4 +36,12 @@ python scripts/generate.py --n 2                                              # 
 python scripts/generate.py --model thinking --split valid                     # Qwen3-4B-Thinking-2507 (amb reasoning)
 ```
 
+Fine-tuning LoRA (model sense reasoning; necessita GPU). Els pesos queden a `adapters/<id>/best/adapter_model.safetensors`
+(no van a git); `<id>` = `lora__<model>__<hiperparàmetres>__<stamp>`.
+```bash
+python scripts/train_lora.py --smoke                    # prova de fum (4 exemples, 1 època)
+python scripts/train_lora.py                            # entrenament complet
+python scripts/generate.py --adapter <id> --split valid # prediccions amb l'adaptador (system "lora" al nom)
+```
+
 Para la GPU: `pip install -e ".[ml,eval]"`.

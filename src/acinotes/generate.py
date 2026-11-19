@@ -127,6 +127,7 @@ def generate_predictions(tok, model, *, model_name: str, split: str, thinking: b
                          quant: str, dtype_name: str, system: str = "zeroshot",
                          n: int | None = None, max_new_tokens: int = 1300,
                          temperature=None, top_p=None, top_k=None, seed: int = 0,
+                         repetition_penalty=None,
                          stamp: str | None = None, resume: bool = False,
                          adapter: naming.AdapterRef | None = None,
                          predictions_dir="predictions", repo_dir=".") -> Path:
@@ -141,8 +142,15 @@ def generate_predictions(tok, model, *, model_name: str, split: str, thinking: b
         raise ValueError(f"system desconegut {system!r}; opcions: {sorted(PROMPT_BUILDERS)}")
     build = PROMPT_BUILDERS[system]
     sampling = sampling_kwargs(thinking, temperature, top_p, top_k)
+    if repetition_penalty:  # contra els bucles de text repetit (útil si el greedy entra en bucle)
+        sampling["repetition_penalty"] = repetition_penalty
 
     variant = f"{'think' if thinking else 'nothink'}-{quant}-{dtype_name}"
+    # si l'usuari canvia el decoding, es veu al nom de la predicció (si no, s'usa el per defecte)
+    explicit = [("t", temperature), ("p", top_p), ("k", top_k), ("rp", repetition_penalty)]
+    tag = "-".join(f"{k}{v:g}" for k, v in explicit if v is not None)
+    if tag:
+        variant = f"{variant}-{tag}"
     system_name = system
     if adapter is not None:
         if adapter.aid.model != model_short_name(model_name):

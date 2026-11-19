@@ -39,6 +39,8 @@ def main():
                     help="per defecte 0 (greedy) sense reasoning i 0.6 amb reasoning")
     ap.add_argument("--top-p", type=float, default=None)
     ap.add_argument("--top-k", type=int, default=None)
+    ap.add_argument("--repetition-penalty", type=float, default=None,
+                    help="p. ex. 1.05-1.1; penalitza repetir tokens (contra els bucles). Per defecte, sense penalització")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--adapter", default=None,
                     help="adaptador LoRA: id (adapters/<id>, usa 'best'), <id>/epoch_2 o ruta. La predicció es diu 'lora'")
@@ -65,6 +67,7 @@ def main():
             dtype_name=dtype_name, system=a.system, n=a.n,
             max_new_tokens=a.max_new_tokens or (8192 if thinking else 1300),
             temperature=a.temperature, top_p=a.top_p, top_k=a.top_k, seed=a.seed,
+            repetition_penalty=a.repetition_penalty,
             stamp=stamp, resume=a.resume, adapter=adapter,
             predictions_dir=a.predictions_dir, repo_dir=ROOT)
 
